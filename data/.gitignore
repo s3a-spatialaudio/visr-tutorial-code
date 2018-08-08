@@ -1,0 +1,2 @@
+# Ignore SOFA files downloaded by the auralisation script.
+*.sofa
