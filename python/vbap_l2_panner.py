@@ -40,6 +40,8 @@ import objectmodel
 import numpy as np
 import cvxpy
 
+cvxpyMajorVersion = int(cvxpy.__version__.split('.')[0])
+
 from helper.vectorFunctions import normalise
 
 class VbapL2Panner( visr.AtomicComponent ):
@@ -89,10 +91,19 @@ class VbapL2Panner( visr.AtomicComponent ):
         self.b = cvxpy.Parameter( self.L.shape[0] )
         self.prob1 = cvxpy.Problem( cvxpy.Minimize( cvxpy.norm( self.g, 1 ) ),
           [ self.L @ self.g == self.b, self.g >= 0.0 ] )
-        self.l1min = cvxpy.Parameter( sign='positive' )
-        self.prob2 = cvxpy.Problem( cvxpy.Minimize( cvxpy.norm( self.g, 2 ) ),
-          [ self.L @ self.g == self.b,  cvxpy.sum_entries( self.g ) == self.l1min,
-           self.g >= 0.0 ] )
+        # Note: incompatible syntax
+        if cvxpyMajorVersion < 1:
+            self.l1min = cvxpy.Parameter( sign='positive' )
+            self.prob2 = cvxpy.Problem( cvxpy.Minimize( cvxpy.norm( self.g, 2 ) ),
+                                       [ self.L @ self.g == self.b,
+                                        cvxpy.sum_entries( self.g ) == self.l1min,
+                                        self.g >= 0.0 ] )
+        else:
+            self.l1min = cvxpy.Parameter( nonneg = True )
+            self.prob2 = cvxpy.Problem( cvxpy.Minimize( cvxpy.norm( self.g, 2 ) ),
+                                       [ self.L @ self.g == self.b,
+                                        cvxpy.sum( self.g ) == self.l1min,
+                                        self.g >= 0.0 ] )
 
     def process( self ):
         """
@@ -124,7 +135,11 @@ class VbapL2Panner( visr.AtomicComponent ):
                     # Assign a column in the gain matrix for each point source.
                     # The indexing at the end of the assignment is to discard gains of virtual
                     # loudspeakers.
-                    gains[:,obj.objectId] = normalise( self.g.value.T )[:,:self.numSpeakers]
+                    # Note: CVXPY 0.4.11 returns a 2D array, CVXPY >= 1.0 a vector.
+                    if cvxpyMajorVersion < 1:
+                        gains[:,obj.objectId] = normalise( self.g.value.T )[:,:self.numSpeakers]
+                    else:
+                        gains[:,obj.objectId] = normalise( self.g.value.T )[:self.numSpeakers]
                 except Exception as ex:
                     print( "Caught exception: %s" % str(ex) )
                     gains[:,obj.objectId] = np.NaN
